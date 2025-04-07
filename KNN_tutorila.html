@@ -1,0 +1,619 @@
+{% extends 'main.html' %}
+{% block content %}
+<!-- <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<script src="//d3js.org/d3.v5.min.js"></script> -->
+<!--<script src="../../static/js/plotly_i_use.js"></script>-->
+<!--<script src="../../static/js/d3_i_use.js"></script>-->
+<!--<script src="../../static/js/math.js"></script>-->
+<!--<script src="../../static/js/tabs.js"></script>-->
+<!--<script src="../../static/js/plotly_i_use.js"></script>-->
+<!--<script src="../../static/js/d3_i_use.js"></script>-->
+<style>
+.blink {
+    animation: blink 1.5s linear infinite;
+    border: solid green;
+}
+@keyframes blink {
+    50% {
+        opacity: 0;
+    }
+    }
+</style>
+
+<div id="main">
+	<div class="inner">
+		<header>
+			<h1>K-nearest neighbors</h1>
+        </header>
+    <title>K-nearest neighbors</title>
+        <div style="float: right">
+            K-value:
+            <input type="number" id="Kval" value = "5" max="10" min="3" size="4" step="1" style="color: black">
+            <button id="classifyNewPtBtn" onclick="javascript:createAnimation();">Classify New Point</button>
+        </div>
+        Number of classes:
+        <input type="number" id="Nclass" value = "2" max="5" min="2" size="4" step="1" style="color: black">
+        <button id="createDataBtn" onclick="javascript:createDataset();">Create New Dataset</button>
+
+
+        <div id="myPlot"></div>
+        <div class="row">
+            <div class="column" style="width: 50%">
+                <p></p>
+                <div id="AddRes_header">
+                    <center>
+                    <b>ADDITIONAL RESOURCES</b>
+                    </center>
+                </div>
+            <li>
+                <a href="https://www.ibm.com/topics/knn" target="_blank">IBM</a>
+                : high level introduction
+            </li>
+            <li>
+                <a href="https://www.youtube.com/watch?v=0p0o5cmgLdE&ab_channel=IntuitiveMachineLearning" target="_blank">Intuitive Machine Learning (YouTube videos)</a>
+                : concept is visually explained in a short video
+            </li>
+            <li>
+                <a href="https://www.youtube.com/watch?v=HVXime0nQeI&list=PLblh5JKOoLUICTaGLRoHQDuF_7q2GfuJF&index=41&ab_channel=StatQuestwithJoshStarmer" target="_blank">StatQuest (YouTube videos)</a>
+                : clear and easy to follow explanation
+            </li>
+            <li>
+                <a href="https://scikit-learn.org/stable/modules/neighbors.html" target="_blank">Nearest neighbors using scikit-learn</a>
+            </li>
+
+
+            </div>
+            <div class="column" style="width: 50%">
+                <p></p>
+                <div id="DataPts_header">
+                  <center><b>DATA POINTS</b></center>
+                </div>
+              <div id="values" ></div>
+            </div>
+          </div>
+  </div>
+</div>
+
+<script>
+    document.getElementById("Nclass").placeholder = "Classes";
+    document.getElementById("Kval").placeholder = "K value";
+    var createDataBtn = document.getElementById("createDataBtn");
+    var classifyNewPtBtn = document.getElementById("classifyNewPtBtn");
+
+    classifyNewPtBtn.disabled = true;
+
+    var Nclass_default = 2;
+    var Nclass_max = 5;
+    var Nclass_min = 2;
+
+    var Kval_default = 5;
+    var Kval_max = 10;
+    var Kval_min = 3;
+
+    var colors = ['blue', 'red', 'green', 'black', 'purple']
+    var traces = [];
+    var all_pts = [[], [], []];
+
+    var x_min = 1e6;
+    var x_max = -1e6;
+
+    var y_min = 1e6;
+    var y_max = -1e6;
+
+    var pts_per_class = 5;
+
+    function createAllTraces(N=Nclass){
+        var all_traces = [];
+        for (let i = 0; i < N; i++){
+            var temp_x = [];
+            var temp_y = [];
+            var rand_center_x = i;
+            var rand_center_y = i*Math.random() - i*0.5 ;
+
+            for(let j = 0; j < pts_per_class; j++){
+                temp_x.push(Number(rand_center_x - 1 + 2*Math.random()).toFixed(2));
+                temp_y.push(Number(rand_center_y - 1 + 2*Math.random()).toFixed(2));
+            }
+            x_min = Math.min(x_min, Math.min(...temp_x));
+            x_max = Math.max(x_max, Math.max(...temp_x));
+
+            y_min = Math.min(y_min, Math.min(...temp_y));
+            y_max = Math.max(y_max, Math.max(...temp_y));
+
+            var temp_trace = {
+                x: temp_x,
+                y: temp_y,
+                mode: 'markers',
+                type: 'scatter',
+                name: 'Class '+String(i),
+                visible: true,
+                marker: {color: colors[i], size: 10}
+            }
+            all_traces.push(temp_trace);
+        }
+        return all_traces;
+    }
+
+    function createDataset(){
+        all_traces_to_delete = []
+        document.getElementById('Nclass').className = '';
+        document.getElementById('Kval').className = '';
+        document.getElementById('createDataBtn').className = '';
+        document.getElementById('classifyNewPtBtn').className = '';
+        document.getElementById('DataPts_header').className = '';
+        document.getElementById('AddRes_header').className = '';
+        allowNewDot = 1
+        // traces = []
+        all_pts = [[], [], []];
+        if (document.getElementById("Nclass").value.length == 0){
+            Nclass = Nclass_default;
+        } else{
+            Nclass = Math.min(document.getElementById("Nclass").value, Nclass_max);
+            Nclass = Math.max(Nclass, Nclass_min);
+        }
+        traces = createAllTraces(Nclass);
+        traces = traces.slice(0, Nclass);
+
+        und_trace = {
+            x:[],
+            y:[],
+            mode: 'markers',
+            type: 'scatter',
+            name: 'Class ?',
+            visible: false,
+            marker: {size: 20}
+        }
+        traces.push(und_trace)
+        var layout = {
+            xaxis: {title: "Feature 1", autorange: true, fixedrange: true},
+            yaxis: {title: "Feature 2", autorange: true, scaleanchor: "x", fixedrange: true},
+            // title: "K-nearest neighbors example",
+            hovermode: "closest",
+            autosize: true,
+            // paper_bgcolor: "#cfe2f3",
+            annotations: [
+                {
+                xref: 'paper', yref: 'paper', x: 0.5, y: 1.1,
+                text: '-----------PLEASE FOLLOW THIS GUIDE FIRST-------------- <br>Look what this graph contains: '+ String(Nclass) + ' different classes of data.<br> CLICK on the graph to create a new point.',
+                showarrow: false, yanchor: 'bottom',
+                font: {
+                    family: 'Courier New, monospace',
+                    size: 16,
+                    color: 'white'
+                },
+                bordercolor: 'grey', bgcolor: 'green'
+                }
+            ]
+        };
+
+        var config = {
+            responsive: true,
+            // scrollZoom: true,
+            displayModeBar: true,
+            modeBarButtonsToRemove: ['zoom2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'],
+            displaylogo: false
+        }
+        Plotly.newPlot('myPlot', traces, layout, config)
+
+        for (let i = 0; i < Nclass; i++){
+            var temp_ar = Array(traces[i].x.length).fill(i);
+            all_pts[0] = all_pts[0].concat(traces[i].x);
+            all_pts[1] = all_pts[1].concat(traces[i].y);
+            all_pts[2] = all_pts[2].concat(temp_ar);
+        }
+        var table_val = [{
+        type: 'table',
+        header: {
+            values: [["<b>Feature 1</b>"], ["<b>Feature 2</b>"], ["<b>Class</b>"]],
+            align: "center",
+            line: {width: 1, color: 'black'},
+            fill: {color: "grey"},
+            font: {family: "Arial", size: 12, color: "white"}
+        },
+        cells: {
+            values: [all_pts[0], all_pts[1], all_pts[2]],
+            align: "center",
+            line: {color: "black", width: 1},
+            font: {family: "Arial", size: 11, color: ["black"]}
+        },
+            xaxis: 'x2',
+            yaxis: 'y2',
+        }]
+        Plotly.newPlot('values', table_val, {margin:{t: 0, l:20, r:20, b:0}, paper_bgcolor: 'rgba(0,0,0,0)'}, {displayModeBar: false});
+    }
+    createDataset();
+    var myPlot = document.getElementById('myPlot')
+
+    Number.prototype.between = function(min, max) {
+        return this >= min && this <= max;
+    };
+    var all_traces_to_delete = [];
+    var allowNewDot = 1;
+    var x_und = 0;
+    var y_und = 0;
+    d3.select(".plotly").on('click', function(d, i) {
+        myPlot = document.getElementById('myPlot');
+        if (all_traces_to_delete.length > 0 && myPlot.data[Nclass].visible == false ){
+            Plotly.deleteTraces('myPlot', all_traces_to_delete);
+            Plotly.addTraces('myPlot', {
+                x:[],
+                y:[],
+                mode: 'markers',
+                type: 'scatter',
+                name: 'Class ?',
+                visible: false,
+                marker: {size: 20}
+            })
+            allowNewDot = 1;
+        }
+        if (allowNewDot){
+            var N_pts = 0;
+            for (let i=0; i<Nclass; i++){
+                N_pts = N_pts + myPlot.data[i].x.length;
+            }
+            if(N_pts == Nclass * pts_per_class + 1){
+                Plotly.animate('myPlot',{
+                    layout:{
+                        annotations: [
+                            {
+                            xref: 'paper', yref: 'paper', x: 0.5, y: 1.1,
+                            text: 'Before that you worked with K value = ' + String(Kval)+', but what happens if you change it? <br> K-value corresponds to a number of neighbor points looking at which you classify a new point. <br> Try to change K value and classify again!',
+                            showarrow: false, yanchor: 'bottom',
+                            font: {
+                                family: 'Courier New, monospace',
+                                size: 16,
+                                color: 'white'
+                            },
+                            bordercolor: 'grey', bgcolor: 'green'
+                            }
+                        ]
+                    }
+                })
+                document.getElementById('Kval').className = 'blink'
+            }
+
+            if(N_pts == Nclass * pts_per_class + 2){
+                Plotly.animate('myPlot',{
+                    layout:{
+                        annotations: [
+                            {
+                            xref: 'paper', yref: 'paper', x: 0.5, y: 1.1,
+                            text: 'As you might have guessed, K value affects a future label of an undefined point. <br> There are some techniques on how to choose a K value, which you can read in Additional resources below. <br> You can play further with this demo by changing number of classes, try it!',
+                            showarrow: false, yanchor: 'bottom',
+                            font: {
+                                family: 'Courier New, monospace',
+                                size: 16,
+                                color: 'white'
+                            },
+                            bordercolor: 'grey', bgcolor: 'green'
+                            }
+                        ]
+                    }
+                })
+                document.getElementById('Nclass').className = 'blink'
+                document.getElementById('createDataBtn').className = 'blink'
+                document.getElementById('AddRes_header').className = 'blink'
+            }
+            var e = d3.event;
+            var bgrect = document.getElementsByClassName('gridlayer')[0].getBoundingClientRect();
+            x_und = ((e.x - bgrect['x']) / (bgrect['width'])) * (myPlot.layout.xaxis.range[1] - myPlot.layout.xaxis.range[0]) + myPlot.layout.xaxis.range[0];
+            y_und = ((e.y - bgrect['y']) / (bgrect['height'])) * (myPlot.layout.yaxis.range[0] - myPlot.layout.yaxis.range[1]) + myPlot.layout.yaxis.range[1];
+            if (x_und.between(myPlot.layout.xaxis.range[0], myPlot.layout.xaxis.range[1]) &&
+                y_und.between(myPlot.layout.yaxis.range[0], myPlot.layout.yaxis.range[1])) {
+                        Plotly.extendTraces(myPlot, {
+                        x: [
+                            [x_und]
+                        ],
+                        y: [
+                            [y_und]
+                        ]
+                        }, [Nclass]);
+                        var visib_bool = [];
+                        for (let i=0; i<Nclass; i++){
+                            visib_bool.push('true')
+                        }
+                        Plotly.restyle('myPlot',
+                            {
+                                visible: visib_bool
+                            }
+                        )
+                        document.getElementById('Nclass').className = '';
+                        // document.getElementById('Kval').className = '';
+                        document.getElementById('createDataBtn').className = '';
+                        document.getElementById('classifyNewPtBtn').className = 'blink';
+                        document.getElementById('DataPts_header').className = '';
+                        document.getElementById('AddRes_header').className = '';
+                        Plotly.relayout('myPlot',
+                            {
+                            annotations: [
+                                    {
+                                    xref: 'paper', yref: 'paper', x: 0.5, y: 1.1,
+                                    text: 'New point is created, but what class it belongs to?<br> If you want to know, click on CLASSIFY NEW POINT button right above!',
+                                    showarrow: false, yanchor: 'bottom',
+                                    font: {
+                                        family: 'Courier New, monospace',
+                                        size: 16,
+                                        color: 'white'
+                                    },
+                                    bordercolor: 'grey', bgcolor: 'green'
+                                    }
+                                ]
+                            }
+                                )
+                        allowNewDot = 0;
+                        classifyNewPtBtn.disabled = false;
+                }
+
+            }
+    });
+
+    d3.select(".plotly").on('mousemove', function(d, i) {
+        var e = d3.event;
+        var bgrect = document.getElementsByClassName('gridlayer')[0].getBoundingClientRect();
+        var x = ((e.x - bgrect['x']) / (bgrect['width'])) * (myPlot.layout.xaxis.range[1] - myPlot.layout.xaxis.range[0]) + myPlot.layout.xaxis.range[0];
+        var y = ((e.y - bgrect['y']) / (bgrect['height'])) * (myPlot.layout.yaxis.range[0] - myPlot.layout.yaxis.range[1]) + myPlot.layout.yaxis.range[1];
+        if (x.between(myPlot.layout.xaxis.range[0], myPlot.layout.xaxis.range[1]) &&
+            y.between(myPlot.layout.yaxis.range[0], myPlot.layout.yaxis.range[1])) {
+                document.getElementById("xvalue").value = x;
+                document.getElementById("yvalue").value = y;
+        }
+    });
+
+    var frames = [];
+    var frame_durations = [];
+
+    function bubbleSort(arr){
+        for (let k = 0; k < Kval - 1; k++){
+            for (let m = 0; m < Kval - k - 1; m++){
+                if (arr[m][0] > arr[m+1][0]){
+                    var temp = arr[m];
+                    arr[m] = arr[m+1];
+                    arr[m+1] = temp;
+                }
+            }
+        }
+        return arr
+    }
+
+    function createAnimation(){
+        document.getElementById('classifyNewPtBtn').className = '';
+        document.getElementById('Kval').className = '';
+        traces = myPlot.data;
+        if (allowNewDot == 0){
+            classifyNewPtBtn.disabled = true;
+            var k_min_d = [];
+            if (document.getElementById("Kval").value.length == 0){
+                Kval = Kval_default;
+            } else{
+                Kval = Math.min(document.getElementById("Kval").value, Kval_max);
+                Kval = Math.max(Kval, Kval_min);
+            }
+            for (let i = 0; i < Kval; i++){
+                k_min_d.push([1e6,0,0]);
+            }
+            var distances = [];
+            var traces_to_delete = [];
+            var traces_del_counter = 0;
+            for (let i = 0; i < Nclass; i++){
+                var temp_d_trace = [];
+                for (let j = 0; j < traces[i].x.length; j++){
+                    traces_to_delete.push((Nclass + 1 + traces_del_counter))
+                    k_min_d = bubbleSort(k_min_d);
+                    var temp_x = [x_und, traces[i].x[j]];
+                    var temp_y = [y_und, traces[i].y[j]];
+                    var temp_d = Math.sqrt((x_und-traces[i].x[j])**2 + (y_und-traces[i].y[j])**2);
+                    temp_d_trace.push(temp_d);
+                    if(temp_d < k_min_d[k_min_d.length-1][0]){
+                        k_min_d[k_min_d.length-1][0] = temp_d;
+                        k_min_d[k_min_d.length-1][1] = i;
+                        k_min_d[k_min_d.length-1][2] = j;
+                    }
+                    var temp_trace = {
+                        x: temp_x,
+                        y: temp_y,
+                        mode: 'lines',
+                        line: {
+                            dash: 'dot',
+                            color: 'black'
+                        },
+                        showlegend: false,
+                        visible: false
+                    };
+                    Plotly.addTraces('myPlot', temp_trace);
+                    traces_del_counter = traces_del_counter + 1;
+                }
+                Plotly.relayout('myPlot',
+                    {
+                    annotations: [
+                            {
+                            xref: 'paper', yref: 'paper', x: 0.5, y: 1.1,
+                            text: '1) Compute distances to all other points[DASHED LINES]',
+                            showarrow: false, yanchor: 'bottom',
+                            font: {
+                                family: 'Courier New, monospace',
+                                size: 16,
+                                color: 'white'
+                            },
+                            bordercolor: 'grey', bgcolor: 'green'
+                            }
+                        ]
+                    }
+                )
+                var temp_frame = {
+                    data: Array(traces_to_delete.length).fill({visible: true}),
+                    traces: traces_to_delete,
+                }
+                Plotly.animate('myPlot', temp_frame, {
+                    frame: {duration: 3000}
+                })
+                distances.push(temp_d_trace);
+            }
+            var frames_coloring = [];
+            var traces_to_delete_2 = [];
+            var all_k_classes = [];
+            for (let i = 0; i < Kval; i++){
+                traces_to_delete_2.push(Nclass + traces_del_counter + i + 1)
+                all_k_classes.push(k_min_d[i][1])
+                var trace_index = k_min_d[i][1];
+                var pt_index = k_min_d[i][2];
+                var min_lines_x = [x_und, traces[trace_index].x[pt_index]];
+                var min_lines_y = [y_und, traces[trace_index].y[pt_index]];
+                temp_trace = {
+                    x: min_lines_x,
+                    y: min_lines_y,
+                    mode: 'lines',
+                    showlegend: false,
+                    visible: false
+                };
+                Plotly.addTraces('myPlot', temp_trace);
+                var temp_frame = {
+                    data: [{
+                        line: {color: colors[trace_index]},
+                        visible: true,
+                    }],
+                    traces: [Nclass + traces_del_counter + i + 1],
+                    layout: {
+                        annotations: [
+                            {
+                            xref: 'paper', yref: 'paper', x: 0.5, y: 1.1,
+                            text: '2) Find K = '+String(Kval) + ' closest points, and color lines to them as their corresponding classes',
+                            showarrow: false, yanchor: 'bottom',
+                            font: {
+                                family: 'Courier New, monospace',
+                                size: 16,
+                                color: 'white'
+                            },
+                            bordercolor: 'grey', bgcolor: 'green'
+                            }
+                        ]
+                    }
+                };
+                frames_coloring.push(temp_frame)
+            }
+            Plotly.animate('myPlot', frames_coloring, {
+                frame: Array(frames_coloring.length).fill({duration: 2000})
+            })
+
+            var temp_frame_invis_dash = {
+                    data: Array(traces_to_delete.length).fill({visible: false}),
+                    traces: traces_to_delete,
+                }
+            Plotly.animate('myPlot', temp_frame_invis_dash,{
+                frame:{duration: 0,
+                    mode: 'immediate',
+                }
+            })
+
+            var final_class = math.mode(all_k_classes);
+            all_pts[0].unshift(Number(x_und.toFixed(2)))
+            all_pts[1].unshift(Number(y_und.toFixed(2)))
+            all_pts[2].unshift(final_class[0])
+            Plotly.restyle('values', {cells: {values: [all_pts[0], all_pts[1], all_pts[2]]}});
+            Plotly.extendTraces('myPlot', {x: [[x_und]], y: [[y_und]],}, [final_class[0]])
+            var temp_frame_thick_lines = [];
+
+            for (let i = 0; i < Kval; i++){
+                if (k_min_d[i][1] == final_class[0]){
+                    temp_trace = {
+                        line:{
+                            width: 5
+                        }
+                    }
+                    temp_frame = {
+                        data: [temp_trace],
+                        traces: [Nclass+traces_del_counter + i+1],
+                        layout: {
+                            annotations: [
+                                {
+                                xref: 'paper', yref: 'paper', x: 0.5, y: 1.1,
+                                text: '3) Find the most frequent class among these neighbors [THICK LINES]',
+                                showarrow: false, yanchor: 'bottom',
+                                font: {
+                                    family: 'Courier New, monospace',
+                                    size: 16,
+                                    color: 'white'
+                                },
+                                bordercolor: 'grey', bgcolor: 'green'
+                                }
+                            ]
+                        }
+                    }
+                    temp_frame_thick_lines.push(temp_frame);
+                }
+            }
+
+            Plotly.animate('myPlot', temp_frame_thick_lines,
+                {
+                    frame: Array(temp_frame_thick_lines.length).fill({duration: 1000})
+                }
+            )
+            temp_trace = {
+                marker: {
+                    color: colors[final_class[0]]
+                }
+            }
+            Plotly.animate('myPlot', {
+                data: [temp_trace],
+                traces: [Nclass],
+                layout: {
+                    annotations: [
+                        {
+                        xref: 'paper', yref: 'paper', x: 0.5, y: 1.1,
+                        text: '4) New point is classified as that majority class',
+                        showarrow: false, yanchor: 'bottom',
+                        font: {
+                            family: 'Courier New, monospace',
+                            size: 16,
+                            color: 'white'
+                        },
+                        bordercolor: 'grey', bgcolor: 'green'
+                        }
+                    ]
+                }
+            }, {
+                frame: {duration: 2000}
+            })
+
+            temp_trace = {
+                marker: {
+                    size: 10
+                }
+            }
+            Plotly.animate('myPlot', {
+                data: [temp_trace],
+                traces: [Nclass]
+            }, {
+                frame: {duration: 1000}
+            })
+
+            all_traces_to_delete = [Nclass].concat(traces_to_delete)
+            all_traces_to_delete = all_traces_to_delete.concat(traces_to_delete_2)
+
+            Plotly.animate('myPlot', {
+                    data: Array(all_traces_to_delete.length).fill({visible: false}),
+                    traces: all_traces_to_delete,
+                }
+            )
+
+
+            Plotly.animate('myPlot',{
+                layout:{
+                    annotations: [
+                        {
+                        xref: 'paper', yref: 'paper', x: 0.5, y: 1.1,
+                        text: 'Congrats! You classified this new point! <br> Try to create one more',
+                        showarrow: false, yanchor: 'bottom',
+                        font: {
+                            family: 'Courier New, monospace',
+                            size: 16,
+                            color: 'white'
+                        },
+                        bordercolor: 'grey', bgcolor: 'green'
+                        }
+                    ]
+                }
+                })
+        }
+    }
+</script>
+{% endblock content %}
